@@ -1,0 +1,28 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ROS workspace outputs
+build/
+devel/
+install/
+log/
+logs/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor files
+.idea/
+.vscode/
