@@ -4,8 +4,8 @@ import math
 from pathlib import Path
 
 # --- Configurations ---
-WINDOW_NAME = "uHand UNO - Finger Tracker"
-MODEL_PATH = Path("hand_landmarker.task") # Model file downloaded previously
+WINDOW_NAME = "uHand UNO - Right Hand Tracker"
+MODEL_PATH = Path("hand_landmarker.task")
 
 BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
@@ -13,7 +13,6 @@ HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 RunningMode = mp.tasks.vision.RunningMode
 
 # Finger tips, intermediate joints, knuckle joints, and bases indices (based on MediaPipe specifications)
-# (Tip, Intermediate, Joint, Base)
 FINGER_JOINTS = {
     "Thumb":  (4, 3, 2, 1),
     "Index":  (8, 7, 6, 5),
@@ -23,16 +22,12 @@ FINGER_JOINTS = {
 }
 
 def calculate_finger_bend(landmarks, finger_indices):
-    """
-    Function to roughly calculate finger bend (applicable to distance from wrist or joint angles).
-    This example uses the distance between the fingertip and wrist (index 0) to determine if a finger is closed or open.
-    """
     tip_idx, _, _, base_idx = finger_indices
     tip = landmarks[tip_idx]
     base = landmarks[base_idx]
     wrist = landmarks[0]
     
-    # Calculate distance from fingertip to wrist (longer when extended, shorter when bent)
+    # Calculate distance from fingertip to wrist
     distance = math.sqrt((tip.x - wrist.x)**2 + (tip.y - wrist.y)**2 + (tip.z - wrist.z)**2)
     return distance
 
@@ -40,11 +35,11 @@ def main():
     if not MODEL_PATH.exists():
         raise SystemExit(f"Model file not found: {MODEL_PATH}\nPlease run the download command.")
 
-    # Initialize MediaPipe HandLandmarker
+    # Initialize MediaPipe HandLandmarker for up to 2 hands
     options = HandLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=str(MODEL_PATH)),
-        running_mode=RunningMode.IMAGE, # Real-time image processing mode first
-        num_hands=1 # Single hand
+        running_mode=RunningMode.IMAGE,
+        num_hands=2
     )
     detector = HandLandmarker.create_from_options(options)
 
@@ -52,7 +47,7 @@ def main():
     if not cap.isOpened():
         raise SystemExit("Could not open camera.")
 
-    print("uHand finger tracker started. Press 'q' to exit.")
+    print("uHand right-hand tracker started. Press 'q' to exit.")
 
     try:
         while cap.isOpened():
@@ -60,39 +55,54 @@ def main():
             if not success:
                 break
 
-            # Horizontal flip (mirror view)
-            display = cv2.flip(frame, 1)
-            
-            # Convert to RGB image for MediaPipe
-            rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
+            # 1. Detect on raw frame
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-
-            # Detect hands
             result = detector.detect(mp_image)
 
+            # 2. Flip horizontally for mirror display
+            display = cv2.flip(frame, 1)
+
             finger_status = {}
+            target_found = False
 
             if result.hand_landmarks:
-                landmarks = result.hand_landmarks[0]
-                h, w, _ = display.shape
+                for idx, landmarks in enumerate(result.hand_landmarks):
+                    # Use the wrist (landmark 0) x-coordinate on the mirrored display (1 - lm.x)
+                    # On a built-in selfie camera, your right hand appears on the right side of the screen (x > 0.5)
+                    wrist_x = 1.0 - landmarks[0].x
 
-                # Draw 21 joint landmarks on screen
-                for lm in landmarks:
-                    cx, cy = int(lm.x * w), int(lm.y * h)
-                    cv2.circle(display, (cx, cy), 4, (0, 255, 0), -1)
+                    if wrist_x > 0.5:  # Right side of the mirror display
+                        target_found = True
+                        h, w, _ = display.shape
 
-                # Calculate bend for each of the 5 fingers
-                for name, indices in FINGER_JOINTS.items():
-                    val = calculate_finger_bend(landmarks, indices)
-                    finger_status[name] = round(val, 2)
+                        # Draw 21 joint landmarks on screen with proper coordinates
+                        for lm in landmarks:
+                            cx = int((1.0 - lm.x) * w)
+                            cy = int(lm.y * h)
+                            cv2.circle(display, (cx, cy), 4, (0, 255, 0), -1)
 
-            # Display each finger status (values) on screen
+                        # Calculate bend for each of the 5 fingers
+                        for name, indices in FINGER_JOINTS.items():
+                            val = calculate_finger_bend(landmarks, indices)
+                            finger_status[name] = round(val, 2)
+                        
+                        break # Track only the target hand
+
+            # Display status on screen
             y_offset = 50
-            for name, val in finger_status.items():
-                text = f"{name}: {val}"
-                cv2.putText(display, text, (30, y_offset), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            if target_found:
+                cv2.putText(display, "Target: RIGHT HAND", (30, y_offset), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 y_offset += 30
+                for name, val in finger_status.items():
+                    text = f"{name}: {val}"
+                    cv2.putText(display, text, (30, y_offset), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    y_offset += 30
+            else:
+                cv2.putText(display, "Please show your RIGHT hand (Right side)", (30, y_offset), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
             cv2.imshow(WINDOW_NAME, display)
 
