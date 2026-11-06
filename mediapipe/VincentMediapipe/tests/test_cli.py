@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "mediapipe" / "main.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "main.py"
 
 
 class CliTests(unittest.TestCase):

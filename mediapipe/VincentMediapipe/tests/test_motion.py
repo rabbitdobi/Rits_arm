@@ -7,7 +7,7 @@ import sys
 from types import SimpleNamespace as NS
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mediapipe"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from motion import CSV_FIELDS, MotionTracker, select_right_hand, write_csv_frame
 
 
