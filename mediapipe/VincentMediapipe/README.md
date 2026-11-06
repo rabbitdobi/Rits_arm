@@ -12,14 +12,20 @@ for the first dependency installation. Tested with Python 3.13 on macOS; the
 Windows commands below are provided but have not been tested on Windows.
 The model is included in the repository, so no separate download is needed.
 
+**Clone the repository once, following the [main README](../../README.md#get-the-code-clone-once-pull-for-future-updates).**
+If you already have `Rits_arm`, skip cloning and use that existing folder.
+Do not clone another copy inside `mediapipe` or `VincentMediapipe`.
+
+Run **all commands below from the repository root**, the `Rits_arm` directory
+containing `README.md`, `.git`, and `mediapipe/`. This README is inside a
+subdirectory, but you do not need to change into that subdirectory to run it.
+
 ### First run — macOS / Linux
 
-Open Terminal and run:
+Open Terminal in the repository root and run. If `.venv` already exists, skip
+the first command and activate the existing environment:
 
 ```bash
-git clone https://github.com/rabbitdobi/Rits_arm.git
-cd Rits_arm
-
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r mediapipe/VincentMediapipe/requirements.txt
@@ -28,12 +34,10 @@ python mediapipe/VincentMediapipe/main.py
 
 ### First run — Windows
 
-Open **Command Prompt (cmd)** and run:
+Open **Command Prompt (cmd)** in the repository root and run. If `.venv`
+already exists, skip the first command and activate the existing environment:
 
 ```bat
-git clone https://github.com/rabbitdobi/Rits_arm.git
-cd Rits_arm
-
 python -m venv .venv
 .venv\Scripts\activate.bat
 python -m pip install -r mediapipe/VincentMediapipe/requirements.txt
