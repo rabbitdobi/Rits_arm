@@ -1,5 +1,53 @@
 # Rits_arm
 
+## Get the code: clone once, pull for future updates
+
+Install [Git](https://git-scm.com/downloads) first. Open Terminal on macOS/Linux,
+or Command Prompt / Git Bash on Windows.
+
+### First time: clone this repository
+
+Go to the directory where you want to keep the project, then run:
+
+```bash
+git clone https://github.com/rabbitdobi/Rits_arm.git
+cd Rits_arm
+```
+
+`git clone` creates a new `Rits_arm` folder and downloads the repository into it.
+You only need to do this once. It does **not** update an existing clone; if a
+non-empty `Rits_arm` folder already exists at that location, cloning there fails.
+
+Next, follow the [setup and run instructions](mediapipe/VincentMediapipe/README.md#quick-start)
+to install Python dependencies and start the tracker.
+
+### Already cloned: update your existing code
+
+When new changes have been merged into GitHub's `main` branch, stop the tracker
+and open a terminal in your existing `Rits_arm` folder, then run:
+
+```bash
+git switch main
+git pull --ff-only
+```
+
+If the terminal is in the folder containing `Rits_arm`, run `cd Rits_arm` first.
+`git pull` updates files **inside the existing clone**; it does not create a new
+folder. You do not need to clone again after each change. Changes on a feature
+branch or an unmerged pull request are not included in `main` yet.
+
+If dependencies have changed, activate your existing Python environment and run:
+
+```bash
+python -m pip install -r mediapipe/VincentMediapipe/requirements.txt
+```
+
+If Git reports local changes or diverging branches, save your work before
+resolving the update. Do not delete your clone or discard your own edits just to
+get the latest code.
+
+## About this project
+
 A PBL2 project connecting MediaPipe hand tracking to a fixed-base, five-finger robotic hand and arm through ROS.
 
 ## Try VincentMediapipe
