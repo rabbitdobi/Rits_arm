@@ -20,7 +20,7 @@ def parse_args(argv=None):
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--camera", type=int, default=0, help="Camera index (default: 0)")
     source.add_argument("--video", type=Path, help="Read a constant-frame-rate video instead")
-    parser.add_argument("--model", type=Path, default=SCRIPT_DIR.parent / "hand_landmarker.task")
+    parser.add_argument("--model", type=Path, default=SCRIPT_DIR.parent / "models" / "hand_landmarker.task")
     parser.add_argument("--csv", type=Path, help="New CSV path (default: output/fingers-TIMESTAMP.csv)")
     parser.add_argument("--json", action="store_true", help="Emit one JSON object per frame on stdout")
     parser.add_argument("--headless", action="store_true", help="Disable the preview window")
