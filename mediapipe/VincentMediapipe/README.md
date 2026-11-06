@@ -20,13 +20,13 @@ On macOS, allow the terminal app to access the camera. Try `--camera 1` if camer
 0 is an iPhone or unavailable. MediaPipe supplies OpenCV; avoid installing
 `opencv-python` alongside `opencv-contrib-python`.
 
-The model is bundled at `mediapipe/hand_landmarker.task`; its default path is
+The model is bundled at `mediapipe/models/hand_landmarker.task`; its default path is
 resolved from the script's parent directory, so launching from another directory also works.
-The original tracker remains at `mediapipe/main.py`; this version shares its model. If it is
+The original tracker is at `mediapipe/AyanoMediapipe/main.py`; both versions share the model. If it is
 missing, download it from the official model storage:
 
 ```bash
-curl -L --fail https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task -o mediapipe/hand_landmarker.task
+curl -L --fail https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task -o mediapipe/models/hand_landmarker.task
 ```
 
 ## Recording and integration

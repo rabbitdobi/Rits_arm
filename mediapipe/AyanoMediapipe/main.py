@@ -5,7 +5,7 @@ from pathlib import Path
 
 # --- Configurations ---
 WINDOW_NAME = "uHand UNO - Right Hand Tracker"
-MODEL_PATH = Path("hand_landmarker.task")
+MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "hand_landmarker.task"
 
 BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
