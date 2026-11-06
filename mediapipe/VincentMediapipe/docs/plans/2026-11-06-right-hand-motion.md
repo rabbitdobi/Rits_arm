@@ -5,7 +5,7 @@
 **Goal:** Track and export right-hand fingertip motion with glowing trails.
 **Architecture:** Pure motion/export module, OpenCV trail renderer, camera/video CLI.
 **Tech Stack:** Python, MediaPipe Tasks, OpenCV, NumPy, unittest.
-**Spec:** docs/superpowers/specs/2026-11-06-right-hand-motion-design.md
+**Spec:** mediapipe/VincentMediapipe/docs/specs/2026-11-06-right-hand-motion-design.md
 
 ## Global Constraints
 Normalized mirrored x/y only; speed is not physical speed. No ROS or actuators.
@@ -17,7 +17,7 @@ Hand labels versus screen location; reacquisition velocity spikes; recording
 loss events; timestamps independent of inference speed; camera/model cleanup.
 
 ### Task 1: Motion and recording
-Files: mediapipe/motion.py, tests/test_motion.py.
+Files: mediapipe/VincentMediapipe/motion.py, mediapipe/VincentMediapipe/tests/test_motion.py.
 Interfaces: select_right_hand(result, min_score) -> index|None;
 MotionTracker.update(landmarks|None, timestamp_ms, score=None) -> frame dict;
 write_csv_frame(writer, frame), CSV_FIELDS.
@@ -28,8 +28,8 @@ write_csv_frame(writer, frame), CSV_FIELDS.
 - [x] Implement math and serialization; run full unittest suite green.
 
 ### Task 2: Display and runnable CLI
-Files: mediapipe/main.py, mediapipe/effects.py, tests/test_effects.py,
-tests/test_cli.py, mediapipe/requirements.txt, mediapipe/README.md, .gitignore.
+Files: mediapipe/VincentMediapipe/main.py, mediapipe/VincentMediapipe/effects.py, mediapipe/VincentMediapipe/tests/test_effects.py,
+mediapipe/VincentMediapipe/tests/test_cli.py, mediapipe/VincentMediapipe/requirements.txt, mediapipe/VincentMediapipe/README.md, .gitignore.
 Interfaces: FingerTrails.update(frame); FingerTrails.draw(image, timestamp_ms).
 - [x] Write/run failing tests for visible trails, time expiry/loss clearing,
   command-line help from another directory, and refusal to overwrite CSV.
