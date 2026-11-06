@@ -5,16 +5,92 @@ which side of the picture it occupies. The mirrored preview shows a skeleton,
 five colored fingertip trails, coordinates, and speed. Press **q**, **Esc**, or
 **Ctrl-C** to stop. This version exports motion data; it does not drive ROS or motors.
 
-## Setup
+## Quick start
 
-Use Python 3.10 or newer (verified with Python 3.13 on macOS). From the repository:
+You need **Git**, **Python 3.10 or newer**, a camera, and an internet connection
+for the first dependency installation. Tested with Python 3.13 on macOS; the
+Windows commands below are provided but have not been tested on Windows.
+The model is included in the repository, so no separate download is needed.
+
+### First run — macOS / Linux
+
+Open Terminal and run:
 
 ```bash
+git clone https://github.com/rabbitdobi/Rits_arm.git
+cd Rits_arm
+
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r mediapipe/VincentMediapipe/requirements.txt
 python mediapipe/VincentMediapipe/main.py
 ```
+
+### First run — Windows
+
+Open **Command Prompt (cmd)** and run:
+
+```bat
+git clone https://github.com/rabbitdobi/Rits_arm.git
+cd Rits_arm
+
+python -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install -r mediapipe/VincentMediapipe/requirements.txt
+python mediapipe/VincentMediapipe/main.py
+```
+
+### Using the tracker
+
+Allow camera access if prompted, then show your **right hand**. The preview
+displays five fingertip positions, speeds, and colored glowing trails. Press
+**q** or **Esc** while the preview window is focused to exit. **Ctrl-C** in the
+terminal also stops the program and closes the CSV recording.
+
+Every run automatically saves a CSV in `mediapipe/VincentMediapipe/output/`.
+Speeds are in normalized screen units per second, **not centimeters per second**.
+
+If the wrong camera opens, or camera 0 is unavailable:
+
+```bash
+python mediapipe/VincentMediapipe/main.py --camera 1
+```
+
+To emit a JSON object for each frame on stdout while also saving CSV:
+
+```bash
+python mediapipe/VincentMediapipe/main.py --json
+```
+
+### Run again later
+
+Open a terminal in your cloned `Rits_arm` directory. On macOS/Linux:
+
+```bash
+source .venv/bin/activate
+python mediapipe/VincentMediapipe/main.py
+```
+
+On Windows Command Prompt:
+
+```bat
+.venv\Scripts\activate.bat
+python mediapipe/VincentMediapipe/main.py
+```
+
+You only need to create the environment once. To get repository updates, stop
+the tracker, enter the repository directory, and run:
+
+```bash
+git switch main
+git pull --ff-only
+python -m pip install -r mediapipe/VincentMediapipe/requirements.txt
+```
+
+Run the install command with the environment activated. If Git reports local
+changes or diverging branches, keep your work and resolve that before updating.
+
+### Camera and model setup
 
 On macOS, allow the terminal app to access the camera. Try `--camera 1` if camera
 0 is an iPhone or unavailable. MediaPipe supplies OpenCV; avoid installing

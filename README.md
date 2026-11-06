@@ -2,6 +2,17 @@
 
 A PBL2 project connecting MediaPipe hand tracking to a fixed-base, five-finger robotic hand and arm through ROS.
 
+## Try VincentMediapipe
+
+Want to run the right-hand tracker on your own computer? Start with the
+[installation and usage guide](mediapipe/VincentMediapipe/README.md#quick-start).
+It covers cloning this repository, macOS/Linux and Windows setup, camera
+selection, CSV/JSON output, and running again later.
+
+The hand landmark model is included. You need Git, Python 3.10 or newer, and a
+camera. This version displays fingertip positions, speeds and glowing trails;
+it does not require ROS or a robotic hand.
+
 ## Project Goal
 
 Develop a prototype that follows a user's finger movements and demonstrates controlled grasping of lightweight objects. The proposed application is remote handling of delicate objects at a fixed workstation.
@@ -38,4 +49,6 @@ The team will agree on the tracking output, ROS input, finger order, value range
 
 ## Current Status
 
-Repository initialized for team collaboration. Implementation code, hardware details, ROS version, and setup instructions will be added as they are confirmed.
+VincentMediapipe can track the right hand and export fingertip positions and
+speeds. See the [MediaPipe directory](mediapipe/README.md) for the separate
+versions and shared model. ROS and hardware integration are still in development.
