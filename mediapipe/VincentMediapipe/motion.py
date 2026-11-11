@@ -6,7 +6,7 @@ FINGERTIPS = {"Thumb": 4, "Index": 8, "Middle": 12, "Ring": 16, "Pinky": 20}
 # 3 landmarks per finger to calculate flexion angle (joint 1, joint 2, joint 3)
 # The angle is measured at joint 2 formed by vector(2->1) and vector(2->3).
 FINGER_JOINTS = {
-    "Thumb":  (1, 2, 4),    # CMC, MCP, TIP
+    "Thumb":  (2, 3, 4),    # MCP, IP, TIP (pure thumb joints, immune to wrist rotation)
     "Index":  (5, 6, 8),    # MCP, PIP, TIP
     "Middle": (9, 10, 12),  # MCP, PIP, TIP
     "Ring":   (13, 14, 16), # MCP, PIP, TIP
@@ -60,28 +60,61 @@ class MotionTracker:
         self.smoothing_ms = smoothing_ms
         self.max_gap_ms = max_gap_ms
         self.previous = None
+        self.previous_angles = None
         self.last_timestamp = None
 
-    def update(self, landmarks, timestamp_ms, score=None):
+    def update(self, landmarks, timestamp_ms, score=None, world_landmarks=None):
         if self.last_timestamp is not None and timestamp_ms <= self.last_timestamp:
             raise ValueError("Frame timestamps must strictly increase")
         dt_ms = None if self.last_timestamp is None else timestamp_ms - self.last_timestamp
         self.last_timestamp = timestamp_ms
-        angles = calculate_finger_angles(landmarks)
-        finger_angles = [angles.get(f, 0.0) for f in ("Thumb", "Index", "Middle", "Ring", "Pinky")]
+
         frame = {"schema_version": 1, "timestamp_ms": timestamp_ms,
                  "tracked": landmarks is not None,
                  "handedness_score": score if landmarks is not None else None,
                  "fingers": {},
-                 "angles": angles,
-                 "finger_angles": finger_angles}
+                 "angles": {},
+                 "finger_angles": []}
         if landmarks is None:
             self.previous = None
+            self.previous_angles = None
             return frame
         if dt_ms is not None and dt_ms > self.max_gap_ms:
             self.previous = None
+            self.previous_angles = None
         alpha = (1 - math.exp(-dt_ms / self.smoothing_ms)
                  if dt_ms is not None and self.smoothing_ms > 0 else 1)
+
+        # Use 3D world landmarks (metric hand-local space) when available
+        # so lateral/vertical hand motion does not distort finger bend angles!
+        angle_landmarks = (world_landmarks if world_landmarks is not None and len(world_landmarks) >= 21
+                           else landmarks)
+        raw_angles = calculate_finger_angles(angle_landmarks)
+        # 150ms time constant suppresses camera landmark fluctuations
+        angle_alpha = (1 - math.exp(-dt_ms / 150.0)
+                       if dt_ms is not None and dt_ms > 0 else alpha)
+        smoothed_angles = {}
+        for name in FINGER_JOINTS:
+            raw = raw_angles.get(name, 0.0)
+            if self.previous_angles is not None and name in self.previous_angles:
+                old = self.previous_angles[name]
+                filtered = old + angle_alpha * (raw - old)
+                # Deadband: ignore small jitter when hand is steady (thumb gets slightly wider deadband)
+                deadband = 1.5 if name == "Thumb" else 1.0
+                max_noise = 3.0 if name == "Thumb" else 2.5
+                if abs(filtered - old) < deadband and abs(raw - old) < max_noise:
+                    val = old
+                else:
+                    val = filtered
+            else:
+                val = raw
+            smoothed_angles[name] = round(val, 1)
+        self.previous_angles = smoothed_angles
+
+        finger_angles = [smoothed_angles.get(f, 0.0) for f in ("Thumb", "Index", "Middle", "Ring", "Pinky")]
+        frame["angles"] = smoothed_angles
+        frame["finger_angles"] = finger_angles
+
         for name, index in FINGERTIPS.items():
             x, y = 1.0 - landmarks[index].x, landmarks[index].y
             vx = vy = speed = None
@@ -93,7 +126,7 @@ class MotionTracker:
                 vy = (y - old["y"]) / (dt_ms / 1000)
                 speed = math.hypot(vx, vy)
             frame["fingers"][name] = dict(x=x, y=y, vx=vx, vy=vy, speed=speed,
-                                          angle=angles.get(name, 0.0))
+                                          angle=smoothed_angles.get(name, 0.0))
         self.previous = frame["fingers"]
         return frame
 
