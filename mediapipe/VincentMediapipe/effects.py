@@ -74,5 +74,7 @@ def draw_tracking(image, landmarks, frame, fps):
         cv2.putText(image, label, (12, 47 + row * 23), cv2.FONT_HERSHEY_SIMPLEX,
                     0.46, COLORS[name], 1, cv2.LINE_AA)
     wrist = frame.get("wrist_angle", 0.0)
-    cv2.putText(image, f"Wrist   roll {wrist:4.0f}deg  (0=palm, 90=side, 180=back)",
+    wrist_dir = frame.get("wrist_direction", "CENTER")
+    signed = frame.get("wrist_signed_angle", 0.0)
+    cv2.putText(image, f"Wrist   roll {wrist:4.0f}deg ({wrist_dir:6s} {signed:+4.0f}deg)",
                 (12, 47 + 5 * 23), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (220, 220, 255), 1, cv2.LINE_AA)
