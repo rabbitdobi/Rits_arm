@@ -135,27 +135,35 @@ class MotionTracker:
             else:
                 val = raw
             smoothed_angles[name] = round(val, 1)
-        # Smooth wrist rotation (roll) angle (0-360 deg with left/right direction)
+        # Smooth wrist rotation in 0-360 deg space (avoids -180/+180 boundary jump)
         raw_wrist_360, raw_wrist_signed = calculate_wrist_roll(landmarks)
-        if self.previous_angles is not None and "Wrist_signed" in self.previous_angles:
-            old_w = self.previous_angles["Wrist_signed"]
-            filtered_w = old_w + angle_alpha * (raw_wrist_signed - old_w)
-            if abs(filtered_w - old_w) < 1.0 and abs(raw_wrist_signed - old_w) < 2.5:
-                smoothed_signed = old_w
+        if self.previous_angles is not None and "Wrist" in self.previous_angles:
+            old_w = self.previous_angles["Wrist"]
+            # Shortest-path difference in 0-360 circle (wrap-around safe)
+            diff = raw_wrist_360 - old_w
+            if diff > 180:
+                diff -= 360.0
+            elif diff < -180:
+                diff += 360.0
+            filtered_w = old_w + angle_alpha * diff
+            # Keep in 0-360 range
+            filtered_w = filtered_w % 360.0
+            if abs(angle_alpha * diff) < 1.0 and abs(diff) < 2.5:
+                smoothed_360 = old_w
             else:
-                smoothed_signed = filtered_w
+                smoothed_360 = filtered_w
         else:
-            smoothed_signed = raw_wrist_signed
-        smoothed_angles["Wrist_signed"] = round(smoothed_signed, 1)
-
-        # 0-360 deg format
-        smoothed_360 = smoothed_signed if smoothed_signed >= 0 else smoothed_signed + 360.0
+            smoothed_360 = raw_wrist_360
         smoothed_angles["Wrist"] = round(smoothed_360, 1)
 
+        # Signed version (-180 to +180) for display only
+        signed = smoothed_360 if smoothed_360 <= 180 else smoothed_360 - 360.0
+        smoothed_angles["Wrist_signed"] = round(signed, 1)
+
         # Left / Right direction detection
-        if smoothed_signed > 10.0:
+        if signed > 10.0:
             wrist_dir = "RIGHT"
-        elif smoothed_signed < -10.0:
+        elif signed < -10.0:
             wrist_dir = "LEFT"
         else:
             wrist_dir = "CENTER"
