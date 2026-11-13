@@ -61,7 +61,7 @@ def draw_tracking(image, landmarks, frame, fps):
             point = (int(finger["x"] * (width - 1)), int(finger["y"] * (height - 1)))
             cv2.circle(image, point, 7, COLORS[name], -1, cv2.LINE_AA)
             cv2.circle(image, point, 3, (255, 255, 255), -1, cv2.LINE_AA)
-    panel_height, panel_width = min(height, 166), min(width, 580)
+    panel_height, panel_width = min(height, 190), min(width, 580)
     panel = image[:panel_height, :panel_width]
     cv2.addWeighted(panel, 0.25, np.zeros_like(panel), 0.75, 0, dst=panel)
     status = "RIGHT HAND" if frame["tracked"] else "RIGHT HAND LOST - show your right hand"
@@ -73,3 +73,6 @@ def draw_tracking(image, landmarks, frame, fps):
         label = f"{name:6s}  bend {angle:4.0f}deg  x {finger['x']:.2f}  y {finger['y']:.2f}  spd {speed}/s"
         cv2.putText(image, label, (12, 47 + row * 23), cv2.FONT_HERSHEY_SIMPLEX,
                     0.46, COLORS[name], 1, cv2.LINE_AA)
+    wrist = frame.get("wrist_angle", 0.0)
+    cv2.putText(image, f"Wrist   roll {wrist:4.0f}deg  (0=palm, 90=side, 180=back)",
+                (12, 47 + 5 * 23), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (220, 220, 255), 1, cv2.LINE_AA)

@@ -45,6 +45,29 @@ def calculate_finger_angles(landmarks):
     return angles
 
 
+def calculate_wrist_roll(landmarks):
+    """
+    Calculate wrist rotation (roll) angle in degrees from hand palm normal vector.
+    0 deg = palm facing camera, 90 deg = sideways (chop), 180 deg = back of hand facing camera.
+    """
+    if landmarks is None or len(landmarks) < 21:
+        return 0.0
+    # Landmarks: Wrist (0), Index MCP (5), Middle MCP (9), Pinky MCP (17)
+    p0, p5, p9, p17 = landmarks[0], landmarks[5], landmarks[9], landmarks[17]
+    u = (p5.x - p17.x, p5.y - p17.y, getattr(p5, "z", 0.0) - getattr(p17, "z", 0.0))
+    v = (p9.x - p0.x, p9.y - p0.y, getattr(p9, "z", 0.0) - getattr(p0, "z", 0.0))
+    # Normal vector = u x v
+    nx = u[1] * v[2] - u[2] * v[1]
+    ny = u[2] * v[0] - u[0] * v[2]
+    nz = u[0] * v[1] - u[1] * v[0]
+    norm = math.sqrt(nx**2 + ny**2 + nz**2)
+    if norm == 0:
+        return 90.0
+    cos_theta = max(-1.0, min(1.0, nz / norm))
+    angle = math.degrees(math.acos(cos_theta))
+    return round(angle, 1)
+
+
 def select_right_hand(result, min_score=0.6):
     """Select the most confident subject-right hand in an unmirrored input."""
     candidates = [(category.score, index)
@@ -109,11 +132,26 @@ class MotionTracker:
             else:
                 val = raw
             smoothed_angles[name] = round(val, 1)
+        # Smooth wrist rotation (roll) angle
+        raw_wrist = calculate_wrist_roll(landmarks)
+        if self.previous_angles is not None and "Wrist" in self.previous_angles:
+            old_w = self.previous_angles["Wrist"]
+            filtered_w = old_w + angle_alpha * (raw_wrist - old_w)
+            if abs(filtered_w - old_w) < 1.0 and abs(raw_wrist - old_w) < 2.5:
+                smoothed_wrist = old_w
+            else:
+                smoothed_wrist = filtered_w
+        else:
+            smoothed_wrist = raw_wrist
+        smoothed_angles["Wrist"] = round(smoothed_wrist, 1)
+
         self.previous_angles = smoothed_angles
 
-        finger_angles = [smoothed_angles.get(f, 0.0) for f in ("Thumb", "Index", "Middle", "Ring", "Pinky")]
+        # 6 values for robot control: 5 fingers + wrist rotation
+        finger_angles = [smoothed_angles.get(f, 0.0) for f in ("Thumb", "Index", "Middle", "Ring", "Pinky", "Wrist")]
         frame["angles"] = smoothed_angles
         frame["finger_angles"] = finger_angles
+        frame["wrist_angle"] = smoothed_angles["Wrist"]
 
         for name, index in FINGERTIPS.items():
             x, y = 1.0 - landmarks[index].x, landmarks[index].y
