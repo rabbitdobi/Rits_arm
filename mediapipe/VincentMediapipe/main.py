@@ -85,10 +85,12 @@ def run(args):
                          data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB)), timestamp_ms)
             index = select_right_hand(result)
             landmarks = None if index is None else result.hand_landmarks[index]
+            world_landmarks = (None if index is None or not getattr(result, "hand_world_landmarks", None)
+                               else result.hand_world_landmarks[index])
             score = None if index is None else max(
                 category.score for category in result.handedness[index]
                 if category.category_name == "Right")
-            frame = tracker.update(landmarks, timestamp_ms, score)
+            frame = tracker.update(landmarks, timestamp_ms, score, world_landmarks=world_landmarks)
             write_csv_frame(writer, frame)
             if args.json:
                 print(json.dumps(frame, allow_nan=False, separators=(",", ":")), flush=True)
