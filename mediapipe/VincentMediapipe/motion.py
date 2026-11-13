@@ -47,11 +47,13 @@ def calculate_finger_angles(landmarks):
 
 def calculate_wrist_roll(landmarks):
     """
-    Calculate wrist rotation (roll) angle in degrees from hand palm normal vector.
-    0 deg = palm facing camera, 90 deg = sideways (chop), 180 deg = back of hand facing camera.
+    Calculate 360-degree wrist rotation (roll) angle in degrees from hand palm normal vector.
+    Returns:
+      deg_360: 0 to 360 deg (0 = palm facing camera, 90 = right, 180 = back, 270 = left)
+      signed_deg: -180 to +180 deg (positive = right, negative = left, 0 = center/palm)
     """
     if landmarks is None or len(landmarks) < 21:
-        return 0.0
+        return 0.0, 0.0
     # Landmarks: Wrist (0), Index MCP (5), Middle MCP (9), Pinky MCP (17)
     p0, p5, p9, p17 = landmarks[0], landmarks[5], landmarks[9], landmarks[17]
     u = (p5.x - p17.x, p5.y - p17.y, getattr(p5, "z", 0.0) - getattr(p17, "z", 0.0))
@@ -62,10 +64,11 @@ def calculate_wrist_roll(landmarks):
     nz = u[0] * v[1] - u[1] * v[0]
     norm = math.sqrt(nx**2 + ny**2 + nz**2)
     if norm == 0:
-        return 90.0
-    cos_theta = max(-1.0, min(1.0, nz / norm))
-    angle = math.degrees(math.acos(cos_theta))
-    return round(angle, 1)
+        return 0.0, 0.0
+    # nx indicates left/right roll, nz indicates front/back
+    signed_deg = math.degrees(math.atan2(nx, nz))
+    deg_360 = signed_deg if signed_deg >= 0 else signed_deg + 360.0
+    return round(deg_360, 1), round(signed_deg, 1)
 
 
 def select_right_hand(result, min_score=0.6):
@@ -132,18 +135,30 @@ class MotionTracker:
             else:
                 val = raw
             smoothed_angles[name] = round(val, 1)
-        # Smooth wrist rotation (roll) angle
-        raw_wrist = calculate_wrist_roll(landmarks)
-        if self.previous_angles is not None and "Wrist" in self.previous_angles:
-            old_w = self.previous_angles["Wrist"]
-            filtered_w = old_w + angle_alpha * (raw_wrist - old_w)
-            if abs(filtered_w - old_w) < 1.0 and abs(raw_wrist - old_w) < 2.5:
-                smoothed_wrist = old_w
+        # Smooth wrist rotation (roll) angle (0-360 deg with left/right direction)
+        raw_wrist_360, raw_wrist_signed = calculate_wrist_roll(landmarks)
+        if self.previous_angles is not None and "Wrist_signed" in self.previous_angles:
+            old_w = self.previous_angles["Wrist_signed"]
+            filtered_w = old_w + angle_alpha * (raw_wrist_signed - old_w)
+            if abs(filtered_w - old_w) < 1.0 and abs(raw_wrist_signed - old_w) < 2.5:
+                smoothed_signed = old_w
             else:
-                smoothed_wrist = filtered_w
+                smoothed_signed = filtered_w
         else:
-            smoothed_wrist = raw_wrist
-        smoothed_angles["Wrist"] = round(smoothed_wrist, 1)
+            smoothed_signed = raw_wrist_signed
+        smoothed_angles["Wrist_signed"] = round(smoothed_signed, 1)
+
+        # 0-360 deg format
+        smoothed_360 = smoothed_signed if smoothed_signed >= 0 else smoothed_signed + 360.0
+        smoothed_angles["Wrist"] = round(smoothed_360, 1)
+
+        # Left / Right direction detection
+        if smoothed_signed > 10.0:
+            wrist_dir = "RIGHT"
+        elif smoothed_signed < -10.0:
+            wrist_dir = "LEFT"
+        else:
+            wrist_dir = "CENTER"
 
         self.previous_angles = smoothed_angles
 
@@ -152,6 +167,8 @@ class MotionTracker:
         frame["angles"] = smoothed_angles
         frame["finger_angles"] = finger_angles
         frame["wrist_angle"] = smoothed_angles["Wrist"]
+        frame["wrist_signed_angle"] = smoothed_angles["Wrist_signed"]
+        frame["wrist_direction"] = wrist_dir
 
         for name, index in FINGERTIPS.items():
             x, y = 1.0 - landmarks[index].x, landmarks[index].y
