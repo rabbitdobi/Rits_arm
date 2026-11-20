@@ -6,14 +6,26 @@ FINGERTIPS = {"Thumb": 4, "Index": 8, "Middle": 12, "Ring": 16, "Pinky": 20}
 # 3 landmarks per finger to calculate flexion angle (joint 1, joint 2, joint 3)
 # The angle is measured at joint 2 formed by vector(2->1) and vector(2->3).
 FINGER_JOINTS = {
-    "Thumb":  (2, 3, 4),    # MCP, IP, TIP (pure thumb joints, immune to wrist rotation)
+    "Thumb":  (2, 3, 4),    # MCP, IP, TIP
     "Index":  (5, 6, 8),    # MCP, PIP, TIP
     "Middle": (9, 10, 12),  # MCP, PIP, TIP
     "Ring":   (13, 14, 16), # MCP, PIP, TIP
     "Pinky":  (17, 18, 20), # MCP, PIP, TIP
 }
+# Expected distance ratio (dist(wrist, tip) / palm_length) for open vs closed states
+FINGER_DIST_RANGES = {
+    "Thumb":  (1.20, 0.75),
+    "Index":  (1.75, 0.95),
+    "Middle": (1.90, 0.95),
+    "Ring":   (1.75, 0.90),
+    "Pinky":  (1.50, 0.85),
+}
 CSV_FIELDS = ["schema_version", "timestamp_ms", "tracked", "handedness_score",
               "finger", "x", "y", "vx", "vy", "speed", "angle"]
+
+
+def _dist3d(p1, p2):
+    return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (getattr(p1, "z", 0.0) - getattr(p2, "z", 0.0))**2)
 
 
 def calculate_joint_angle(p1, p2, p3):
@@ -32,16 +44,53 @@ def calculate_joint_angle(p1, p2, p3):
 def calculate_finger_angles(landmarks):
     """
     Calculate bend/flex angles (in degrees) for 5 fingers.
+    Combines 3D joint angle with wrist-to-tip distance ratio so that fist flexion
+    is maintained even when finger joints are occluded from the back of the hand.
     0 deg = straight/open, ~90-130 deg = bent/closed.
     """
     if landmarks is None or len(landmarks) < 21:
         return {}
+
+    # Palm scale: distance from wrist(0) to middle MCP(9), and index MCP(5)
+    p0, p5, p9 = landmarks[0], landmarks[5], landmarks[9]
+    palm_len = _dist3d(p0, p9)
+    if palm_len == 0:
+        palm_len = 1.0
+
     angles = {}
-    for name, (j1, j2, j3) in FINGER_JOINTS.items():
-        angle = calculate_joint_angle(landmarks[j1], landmarks[j2], landmarks[j3])
-        # 180 deg is fully straight. Flex angle = 180 - angle.
-        bend = max(0.0, min(180.0, 180.0 - angle))
-        angles[name] = round(bend, 1)
+    # 1. Calculate 4 fingers first (Index, Middle, Ring, Pinky)
+    for name in ("Index", "Middle", "Ring", "Pinky"):
+        j1, j2, j3 = FINGER_JOINTS[name]
+        joint_angle = calculate_joint_angle(landmarks[j1], landmarks[j2], landmarks[j3])
+        joint_bend = max(0.0, min(180.0, 180.0 - joint_angle))
+
+        tip_idx = FINGERTIPS[name]
+        d = _dist3d(p0, landmarks[tip_idx])
+        r_open, r_closed = FINGER_DIST_RANGES[name]
+        dist_ratio = max(0.0, min(1.0, (r_open - (d / palm_len)) / max(0.1, r_open - r_closed)))
+        dist_bend = dist_ratio * 125.0
+        angles[name] = round(max(joint_bend, dist_bend), 1)
+
+    # 2. Calculate Thumb with joint angle, PIP proximity, and fist synergy
+    j1, j2, j3 = FINGER_JOINTS["Thumb"]
+    joint_angle = calculate_joint_angle(landmarks[j1], landmarks[j2], landmarks[j3])
+    joint_bend = max(0.0, min(180.0, 180.0 - joint_angle))
+    thumb_effective = max(0.0, joint_bend - 15.0)
+    thumb_joint_bend = min(180.0, thumb_effective * 2.5)
+
+    # In a fist, thumb tip (4) folds tightly beside index PIP (6)
+    d_to_pip = _dist3d(landmarks[6], landmarks[4])
+    pip_ratio = max(0.0, min(1.0, (0.80 - (d_to_pip / palm_len)) / (0.80 - 0.35)))
+    thumb_dist_bend = pip_ratio * 125.0
+
+    # Fist synergy assist: if the 4 fingers form a clenched fist (fist_avg > 70 deg),
+    # the thumb naturally curls with the fist and maintains full closure even during wrist rotation / occlusion.
+    fist_avg = (angles["Index"] + angles["Middle"] + angles["Ring"] + angles["Pinky"]) / 4.0
+    synergy_bend = fist_avg * 0.95 if fist_avg > 70.0 else 0.0
+
+    thumb_bend = max(thumb_joint_bend, thumb_dist_bend, synergy_bend)
+    angles["Thumb"] = round(thumb_bend, 1)
+
     return angles
 
 
@@ -111,8 +160,7 @@ class MotionTracker:
         alpha = (1 - math.exp(-dt_ms / self.smoothing_ms)
                  if dt_ms is not None and self.smoothing_ms > 0 else 1)
 
-        # Use 3D world landmarks (metric hand-local space) when available
-        # so lateral/vertical hand motion does not distort finger bend angles!
+        # Use 3D world landmarks (metric hand-local space) when available.
         angle_landmarks = (world_landmarks if world_landmarks is not None and len(world_landmarks) >= 21
                            else landmarks)
         raw_angles = calculate_finger_angles(angle_landmarks)
@@ -127,7 +175,7 @@ class MotionTracker:
                 filtered = old + angle_alpha * (raw - old)
                 # Deadband: ignore small jitter when hand is steady (thumb gets slightly wider deadband)
                 deadband = 1.5 if name == "Thumb" else 1.0
-                max_noise = 3.0 if name == "Thumb" else 2.5
+                max_noise = 3.0 if name == "Thumb" else 4.0
                 if abs(filtered - old) < deadband and abs(raw - old) < max_noise:
                     val = old
                 else:
