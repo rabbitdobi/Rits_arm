@@ -61,20 +61,68 @@ def draw_tracking(image, landmarks, frame, fps):
             point = (int(finger["x"] * (width - 1)), int(finger["y"] * (height - 1)))
             cv2.circle(image, point, 7, COLORS[name], -1, cv2.LINE_AA)
             cv2.circle(image, point, 3, (255, 255, 255), -1, cv2.LINE_AA)
-    panel_height, panel_width = min(height, 190), min(width, 580)
+    panel_height, panel_width = min(height, 195), min(width, 390)
     panel = image[:panel_height, :panel_width]
     cv2.addWeighted(panel, 0.25, np.zeros_like(panel), 0.75, 0, dst=panel)
     status = "RIGHT HAND" if frame["tracked"] else "RIGHT HAND LOST - show your right hand"
     cv2.putText(image, f"{status} | {fps:.0f} FPS", (12, 23),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.53, (220, 255, 230), 1, cv2.LINE_AA)
+
+    bar_x = 80
+    bar_w = 150
+    bar_h = 10
+    max_finger_angle = 130.0
+
+    # 5本指のゲージバー
     for row, (name, finger) in enumerate(frame["fingers"].items()):
-        speed = "--" if finger["speed"] is None else f"{finger['speed']:.2f}"
+        y_text = 47 + row * 24
+        y_bar = y_text - 10
         angle = finger.get("angle", 0.0)
-        label = f"{name:6s}  bend {angle:4.0f}deg  x {finger['x']:.2f}  y {finger['y']:.2f}  spd {speed}/s"
-        cv2.putText(image, label, (12, 47 + row * 23), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.46, COLORS[name], 1, cv2.LINE_AA)
+        color = COLORS[name]
+
+        # 指名
+        cv2.putText(image, f"{name:6s}", (12, y_text), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.46, color, 1, cv2.LINE_AA)
+
+        # ゲージ背景
+        cv2.rectangle(image, (bar_x, y_bar), (bar_x + bar_w, y_bar + bar_h), (50, 50, 50), -1)
+
+        # ゲージの伸び（曲げ角度）
+        fill = int(max(0.0, min(1.0, angle / max_finger_angle)) * bar_w)
+        if fill > 0:
+            cv2.rectangle(image, (bar_x, y_bar), (bar_x + fill, y_bar + bar_h), color, -1)
+        cv2.rectangle(image, (bar_x, y_bar), (bar_x + bar_w, y_bar + bar_h), (90, 90, 90), 1)
+
+        # 角度数値
+        cv2.putText(image, f"{angle:3.0f}deg", (bar_x + bar_w + 10, y_text),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.44, (230, 230, 230), 1, cv2.LINE_AA)
+
+    # 手首（Wrist）の中央振り分けゲージバー
+    y_wrist = 47 + 5 * 24
+    y_bar_w = y_wrist - 10
     wrist = frame.get("wrist_angle", 0.0)
     wrist_dir = frame.get("wrist_direction", "CENTER")
     signed = frame.get("wrist_signed_angle", 0.0)
-    cv2.putText(image, f"Wrist   roll {wrist:4.0f}deg ({wrist_dir:6s} {signed:+4.0f}deg)",
-                (12, 47 + 5 * 23), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (220, 220, 255), 1, cv2.LINE_AA)
+    wrist_color = (220, 220, 255)
+
+    cv2.putText(image, "Wrist ", (12, y_wrist), cv2.FONT_HERSHEY_SIMPLEX,
+                0.46, wrist_color, 1, cv2.LINE_AA)
+
+    # 手首ゲージ背景
+    cv2.rectangle(image, (bar_x, y_bar_w), (bar_x + bar_w, y_bar_w + bar_h), (50, 50, 50), -1)
+    center_x = bar_x + bar_w // 2
+    cv2.line(image, (center_x, y_bar_w - 2), (center_x, y_bar_w + bar_h + 2), (180, 180, 180), 1)
+
+    # 左右の傾き（-90度〜+90度で左右フル）
+    w_ratio = max(-1.0, min(1.0, signed / 90.0))
+    offset = int(w_ratio * (bar_w // 2))
+    if offset > 0:
+        cv2.rectangle(image, (center_x, y_bar_w), (center_x + offset, y_bar_w + bar_h), (100, 200, 255), -1)
+    elif offset < 0:
+        cv2.rectangle(image, (center_x + offset, y_bar_w), (center_x, y_bar_w + bar_h), (255, 180, 100), -1)
+    cv2.rectangle(image, (bar_x, y_bar_w), (bar_x + bar_w, y_bar_w + bar_h), (90, 90, 90), 1)
+
+    # 手首数値と方向
+    dir_str = "R" if wrist_dir == "RIGHT" else ("L" if wrist_dir == "LEFT" else "C")
+    cv2.putText(image, f"{wrist:3.0f}deg [{dir_str}]", (bar_x + bar_w + 10, y_wrist),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.44, wrist_color, 1, cv2.LINE_AA)
