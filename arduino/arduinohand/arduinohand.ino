@@ -1,7 +1,8 @@
-// hand_receiver.ino
-// PCから "親指,人差し指,中指,薬指,小指" を受け取って、ハンドの指を動かす
-// 例: "180,90,90,90,180"   180 = 開く, 0 = 握る
-// 受け取った 0〜180 は、各指の動ける範囲（FINGER_MIN〜FINGER_MAX）に変換される
+// arduinohand.ino
+// PCから "親指,人差し指,中指,薬指,小指[,手首]" を受け取って、ハンドを動かす
+// 指:   0 = 握る, 180 = 開く
+// 手首: 0〜180（6つ目は省略可。省略したら手首は今の位置のまま）
+// 受け取った 0〜180 は、それぞれの安全な範囲（MIN〜MAX）に変換される
 
 #include <Servo.h>
 
@@ -12,25 +13,28 @@ const bool ECHO = true;                 // 受け取った角度をシリアル�
 
 const uint8_t FINGER_PINS[5] = {7, 6, 5, 4, 3};  // 親指, 人差し指, 中指, 薬指, 小指
 const uint8_t WRIST_PIN = 2;
-const int WRIST_ANGLE = 90;                       // 手首は真ん中で固定
 
 // 指ごとの動ける範囲（実際に測った値）
 const int FINGER_MIN[5] = {30, 30, 30, 30, 30};       // 握る側の限界
 const int FINGER_MAX[5] = {140, 140, 140, 140, 140};  // 開く側の限界
 
+// 手首の動ける範囲（まだ仮の値。測ったら書き換える）
+const int WRIST_MIN = 45;
+const int WRIST_MAX = 135;
+
 // ===== ここから下は基本さわらなくてOK =====
 Servo fingers[5];
 Servo wrist;
 
-char buf[40];
+char buf[48];
 uint8_t len = 0;
 unsigned long lastReceived = 0;
 bool timedOut = false;
 
-// 0〜180 の入力を、その指の動ける範囲に変換
-int toServoAngle(int i, int input) {
+// 0〜180 の入力を、指定した範囲に変換
+int toRange(int input, int minA, int maxA) {
   input = constrain(input, 0, 180);
-  return map(input, 0, 180, FINGER_MIN[i], FINGER_MAX[i]);
+  return map(input, 0, 180, minA, maxA);
 }
 
 // 親指(0)だけ向きが逆なので反転して書き込む
@@ -38,19 +42,32 @@ void writeFinger(int i, int angle) {
   fingers[i].write(i == 0 ? 180 - angle : angle);
 }
 
-// 1行分のデータを読んで、指を動かす
+// 手首も向きが逆
+void writeWrist(int angle) {
+  wrist.write(180 - angle);
+}
+
+// 1行分のデータを読んで、ハンドを動かす
 void handleLine(char* line) {
-  int a[5];
-  if (sscanf(line, "%d,%d,%d,%d,%d", &a[0], &a[1], &a[2], &a[3], &a[4]) != 5) {
+  int a[6];
+  int n = sscanf(line, "%d,%d,%d,%d,%d,%d", &a[0], &a[1], &a[2], &a[3], &a[4], &a[5]);
+  if (n != 5 && n != 6) {
     if (ECHO) Serial.println("ERR bad format");  // 形がおかしいデータは無視
     return;
   }
 
   int angles[5];
   for (int i = 0; i < 5; i++) {
-    angles[i] = toServoAngle(i, a[i]);
+    angles[i] = toRange(a[i], FINGER_MIN[i], FINGER_MAX[i]);
     writeFinger(i, angles[i]);
   }
+
+  int wristAngle = -1;
+  if (n == 6) {
+    wristAngle = toRange(a[5], WRIST_MIN, WRIST_MAX);
+    writeWrist(wristAngle);
+  }
+
   lastReceived = millis();
   timedOut = false;
 
@@ -58,7 +75,13 @@ void handleLine(char* line) {
     Serial.print("OK servo=");
     for (int i = 0; i < 5; i++) {
       Serial.print(angles[i]);
-      Serial.print(i < 4 ? "," : "\n");
+      Serial.print(",");
+    }
+    if (wristAngle >= 0) {
+      Serial.print(" wrist=");
+      Serial.println(wristAngle);
+    } else {
+      Serial.println(" wrist=(unchanged)");
     }
   }
 }
@@ -66,12 +89,12 @@ void handleLine(char* line) {
 void setup() {
   Serial.begin(BAUD);
 
-  // 最初は全部開いた状態にしてから接続（急に動かないように）
+  // 最初は指を全部開いて、手首は真ん中にしてから接続（急に動かないように）
   for (int i = 0; i < 5; i++) {
     writeFinger(i, FINGER_MAX[i]);
     fingers[i].attach(FINGER_PINS[i]);
   }
-  wrist.write(180 - WRIST_ANGLE);  // 手首も向きが逆
+  writeWrist(toRange(90, WRIST_MIN, WRIST_MAX));
   wrist.attach(WRIST_PIN);
 
   lastReceived = millis();
