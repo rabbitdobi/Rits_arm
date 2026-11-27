@@ -234,10 +234,12 @@ def run(args, live=None):
             result = detector.detect_for_video(mp_image, timestamp_ms)
             index = select_right_hand(result, prefer_largest=args.realsense)
             landmarks = None if index is None else result.hand_landmarks[index]
+            world_landmarks = (None if index is None or not getattr(result, "hand_world_landmarks", None)
+                               else result.hand_world_landmarks[index])
             score = None if index is None else max(
                 category.score for category in result.handedness[index]
                 if category.category_name == "Right")
-            frame = tracker.update(landmarks, timestamp_ms, score)
+            frame = tracker.update(landmarks, timestamp_ms, score, world_landmarks=world_landmarks)
             if args.realsense:
                 frame["depth"] = cap.measure(landmarks)
                 write_depth_csv(depth_writer, frame["depth"], timestamp_ms, frame["tracked"], score)
