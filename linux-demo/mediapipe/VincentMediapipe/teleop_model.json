@@ -1,0 +1,19 @@
+{
+  "name": "XM430 demo drawing model — NOT hardware calibrated",
+  "simulation_only": true,
+  "geometry_verified": false,
+  "provenance": "Gesture-Arm-Demo pose_mimic.py drawing lengths and arm.yaml limits; mounted hand dimensions unverified",
+  "links_m": [0.130, 0.124, 0.126],
+  "joint_min_rad": [-1.5, -1.95, -1.5, -1.7],
+  "joint_max_rad": [1.5, 1.5, 1.5, 2.0],
+  "tool_pitch_down_rad": 0.0,
+  "origin_target_m": [0.250, 0.0, 0.130],
+  "workspace_m": [[0.08, 0.36], [-0.16, 0.16], [-0.03, 0.29]],
+  "camera_delta_to_robot": [[0, 0, -1], [-1, 0, 0], [0, -1, 0]],
+  "translation_gain": [0.4, 0.4, 0.4],
+  "max_joint_speed_rad_s": 1.0,
+  "wrist_servo_neutral_deg": 90.0,
+  "wrist_servo_limits_deg": [30.0, 150.0],
+  "wrist_twist_gain": 1.0,
+  "wrist_actuator": "unassigned hand-wrist preview; existing Arduino firmware fixes wrist"
+}
