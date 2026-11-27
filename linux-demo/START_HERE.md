@@ -1,6 +1,6 @@
 # Linux Demo Quick Start
 
-First, check that the **D455 reports a stable palm depth** and **DYNAMIXEL Wizard detects all four motors**. Once both checks pass, teach the arm its reference poses and test motion tracking.
+Run the live arm demo with [`linux_teleop.py run`](#5-run-the-arm-mapping). It uses the D455 to measure your palm position in 3D and maps changes in that position to the four Dynamixel joints using poses taught on the robot. The camera preview in Step 2 checks the D455 before the live test.
 
 ## 1. Get the demo code
 
@@ -46,8 +46,38 @@ lsusb -t
 ls -l /dev/serial/by-id/
 ```
 
-## 4. After both checks pass
+## 4. Check and teach the arm
 
-Follow [Section 3 of the full guide](README.md#3-只读检查并示教机械臂) to run a read-only motor check, then capture the neutral pose and six small offsets. For the first motion test, run the four-axis arm by itself. Arduino wrist control and ROS 2 integration can follow once the arm is working.
+Use the U2D2 serial port found in Step 3. Replace `/dev/ttyUSB0` below if Wizard showed a different port.
+
+```bash
+ARM=/dev/ttyUSB0
+python xm430_arm_demo.py --port "$ARM"
+```
+
+The command reads the motor configuration and positions. Confirm it reports all four motors and that torque is off on each. Secure the base, clear the arm's path, and support it before teaching.
+
+```bash
+python linux_teleop.py teach --arm-port "$ARM" --calibration bench.json
+```
+
+Follow the prompts to record the neutral pose and six 20 mm offsets around it, one in each direction along the camera's X, Y, and Z axes. Return the arm to the original neutral pose at the end. The script saves the poses to `bench.json`. Use a new filename if you need to teach again, and use that same filename when you run the demo. See [the full guide](README.md#3-只读检查并示教机械臂) for the direction conventions.
+
+## 5. Run the arm mapping
+
+With the arm at the taught neutral pose, its path clear, and the motor power cutoff within reach, run:
+
+```bash
+python linux_teleop.py run --arm-port "$ARM" --calibration bench.json
+```
+
+1. Type `MOVE` when the terminal prompts you.
+2. Click the camera preview, hold your right palm still at a distance where depth is stable, and press **G**. On the first engagement the program enables motor torque.
+3. Move your palm slowly by 2–3 cm. The arm should make a small corresponding movement. **S** pauses and **Q** exits. If palm depth is lost, the demo pauses until you press **G** again.
+4. After exiting, support the arm before releasing motor torque. Run the command below and type `RELEASE` when prompted.
+
+```bash
+python linux_teleop.py release --arm-port "$ARM"
+```
 
 If a step fails, copy the full terminal error or capture a screenshot of the D455 preview or the Wizard scan.
