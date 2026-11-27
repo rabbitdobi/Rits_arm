@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from effects import FingerTrails
+from effects import FingerTrails, draw_control
 
 
 def frame(timestamp, x, tracked=True):
@@ -14,6 +14,16 @@ def frame(timestamp, x, tracked=True):
 
 
 class TrailTests(unittest.TestCase):
+    def test_control_preview_keeps_all_five_fingers_inside_small_frame(self):
+        canvas = np.zeros((240, 320, 3), dtype=np.uint8)
+        control = dict(reference_cm=40, status="estimated", calibration_samples=20,
+                       distance_cm=50, delta_cm=10,
+                       flexion={name: .8 for name in ("Thumb", "Index", "Middle", "Ring", "Pinky")})
+        draw_control(canvas, control)
+        # Pinky is the last row; its wide magenta fill must remain visible.
+        pink = (canvas[:, :, 0] > 220) & (canvas[:, :, 1] > 70) & (canvas[:, :, 1] < 130) & (canvas[:, :, 2] > 130)
+        self.assertGreater(int(pink.sum()), 100)
+
     def test_motion_draws_visible_trail_and_expires_with_time(self):
         trails = FingerTrails(lifetime_ms=600)
         trails.update(frame(0, 0.2))

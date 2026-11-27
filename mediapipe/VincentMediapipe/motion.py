@@ -7,14 +7,25 @@ CSV_FIELDS = ["schema_version", "timestamp_ms", "tracked", "handedness_score",
               "finger", "x", "y", "vx", "vy", "speed"]
 
 
-def select_right_hand(result, min_score=0.6):
-    """Select the most confident subject-right hand in an unmirrored input."""
+def select_right_hand(result, min_score=0.6, prefer_largest=False):
+    """Select subject-right hand; optionally prefer foreground size over confidence."""
     candidates = [(category.score, index)
                   for index, categories in enumerate(result.handedness)
                   if index < len(result.hand_landmarks)
                   for category in categories
                   if category.category_name == "Right" and category.score >= min_score]
-    return max(candidates)[1] if candidates else None
+    if not candidates:
+        return None
+    if prefer_largest:
+        def rank(candidate):
+            score, index = candidate
+            points = result.hand_landmarks[index]
+            xs, ys = [p.x for p in points], [p.y for p in points]
+            area = ((max(xs) - min(xs)) * (max(ys) - min(ys))
+                    if xs and all(math.isfinite(v) for v in xs + ys) else -1)
+            return area, score, index
+        return max(candidates, key=rank)[1]
+    return max(candidates)[1]
 
 
 class MotionTracker:

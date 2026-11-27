@@ -54,6 +54,32 @@ terminal also stops the program and closes the CSV recording.
 Every run automatically saves a CSV in `mediapipe/VincentMediapipe/output/`.
 Speeds are in normalized screen units per second, **not centimeters per second**.
 
+### Record a video demo
+
+With the environment activated, run from the repository root:
+
+```bash
+python mediapipe/VincentMediapipe/main.py --record
+```
+
+Show your right hand to the camera. The program records the mirrored preview,
+including the skeleton, colored fingertip trails, positions and speeds, to
+`mediapipe/VincentMediapipe/output/demo-TIMESTAMP.mp4`. CSV data is saved as usual.
+Press **q**, **Esc**, or **Ctrl-C** to stop and finish saving the MP4 before
+opening it. Video recording is optional; without `--record`, only CSV is saved.
+The video has no audio.
+
+To choose a filename or another camera:
+
+```bash
+python mediapipe/VincentMediapipe/main.py --camera 1 --record mediapipe/VincentMediapipe/output/my-demo.mp4
+```
+
+Existing files are never overwritten. Camera recordings use 30 FPS, holding
+frames when tracking runs slower so playback follows elapsed time. Video inputs
+use the source FPS. `--headless --record` also saves the annotated video without
+opening a preview window; `--no-trails` removes trails from the recording too.
+
 If the wrong camera opens, or camera 0 is unavailable:
 
 ```bash
@@ -111,8 +137,72 @@ curl -L --fail https://storage.googleapis.com/mediapipe-models/hand_landmarker/h
 
 ## Recording and integration
 
+### Camera-only distance and finger control preview
+
+This prototype can be developed without Arduino. In addition to the existing
+fingertip tracking, it estimates palm distance from changes in apparent palm size
+and shows five finger-flexion bars. It sends **no motor commands**.
+
+On this Mac, double-click `开始距离校准.command` in the repository root to start
+with control preview and MP4 recording. Or, with the Python environment active:
+
+```bash
+python mediapipe/VincentMediapipe/main.py --control-preview --reference-cm 40 --record
+```
+
+1. Measure **40 cm from the camera lens to the center of your right palm** (or use
+   a different measured distance with `--reference-cm`). Face the palm toward the
+   lens, keep it near the image center and keep all fingers visible.
+2. Click the video window, switch to English input, and press **C**. Hold still
+   until **ESTIMATED** appears: at least 20 stable tracked frames over 0.8 seconds
+   are required. `HOLD STILL` means the collected palm sizes vary too much.
+3. Move your hand slowly nearer/farther while keeping the palm facing the lens.
+   `Palm Z estimate` is estimated camera-axis distance in cm; positive `delta`
+   means farther than the reference. The distance is smoothed with a 100 ms time
+   constant; loss or a gap over 250 ms clears the filter.
+4. Curl/extend the fingers to move the colored bars. **0** means straight;
+   **1** means roughly 90 degrees average flexion at the two measured joints.
+   This is a geometry proxy, not a calibrated servo position. Thumb opposition
+   and spreading fingers sideways are not measured.
+5. **R** clears the distance calibration; **C** starts a new calibration.
+   **Q / Esc / Ctrl-C** ends recording. Every launch needs a new calibration.
+
+The reference uses median pixel distances between palm landmarks **5–17** and
+**0–9**, combining their inverse scale ratios with a geometric mean. This is a
+known-distance scale calibration, **not** full camera calibration. Changing user,
+camera, zoom, crop or resolution requires recalibration. Keep camera settings
+fixed; autofocus, hand movement off-axis, landmark errors, palm deformation and
+rotation can still bias the result. A model-estimated palm-normal gate rejects
+obvious tilts (frontality < 0.8); width/length ratio disagreement >20% also
+suppresses depth. These gates do not guarantee accuracy or detect every rotation.
+Missing/invalid measurements show `--` and are recorded as JSON `null`.
+
+An additional `<CSV-stem>.control.jsonl` is saved next to the normal CSV, with
+one object per frame. It includes `timestamp_ms`, `status`, `distance_cm`,
+`delta_cm`, `flexion`, estimated `world_landmarks_m`, `frontality`, and calibration
+reference spans/resolution. With `--json`, the usual output also gets a `control`
+object. The existing fingertip CSV columns are unchanged. World landmarks are
+MediaPipe's hand-centered 3D estimates, not camera-frame positions. Null distance
+must never be interpreted as zero or as a command to keep moving.
+
+`--headless --control-preview` exports finger/world data, but cannot accept C/R,
+so distance remains uncalibrated. Ordinary input must be **unmirrored**; videos
+recorded by this program are mirrored and contain overlays, so are not raw
+calibration measurements. The MP4 includes the new control panel when enabled.
+
+Before connecting hardware, measure at **30, 40, 50 and 60 cm**, with repeated
+stationary readings and slight rotations. Compare estimates with a ruler and
+record absolute error, jitter and invalid-frame rate. Synthetic tests and video
+replay validate the software flow; **physical measurement accuracy is not yet
+validated**. This method estimates palm depth only, not per-fingertip absolute
+depth or calibrated robot-frame XYZ. ROS/Arduino protocols and motor calibration
+remain a separate integration step.
+
+### Existing motion recording
+
 Every run creates a new CSV under the version's ignored `mediapipe/VincentMediapipe/output/` directory.
-Only numeric motion data is recorded, not camera images. Use a new filename for
+By default, only numeric motion data is recorded; `--record` also saves camera
+images with the tracking overlay. Use a new filename for
 each explicit `--csv` path; existing recordings are never overwritten.
 
 ```bash
@@ -193,3 +283,16 @@ installed vision dependencies.
 
 References: [MediaPipe Python Hand Landmarker](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/python),
 [landmark coordinate definitions](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker).
+
+## Unified fingers / wrist / arm simulation
+
+See [统一控制预览与离线演示](docs/unified-preview.md). Use the root launcher
+`查看离线控制演示.command` without a camera, or `开始统一控制预览.command`
+when the D455 is available. All target values are preview/log output only.
+The arm geometry is unverified; no Arduino/ROS commands are sent.
+
+## Human shoulder/elbow/wrist tracking
+
+Optional `--arm-tracking` enables Pose + same-frame D455 joint measurements.
+See [人体手臂追踪说明](docs/human-arm-tracking.md), and use root launcher
+`开始手臂三维追踪.command`. This measures human joints, separately from robot targets.

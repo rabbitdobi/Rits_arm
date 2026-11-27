@@ -16,6 +16,17 @@ def hand(x=0.8, y=0.2):
 
 
 class MotionTests(unittest.TestCase):
+    def test_largest_right_hand_can_be_selected_over_background_confidence(self):
+        foreground = hand()
+        foreground[0] = NS(x=.3, y=.3, z=0.)
+        foreground[20] = NS(x=.7, y=.8, z=0.)
+        background = [NS(x=.1 + i * .001, y=.1 + i * .001, z=0.) for i in range(21)]
+        result = NS(hand_landmarks=[foreground, background],
+                    handedness=[[NS(category_name="Right", score=.9)],
+                                [NS(category_name="Right", score=.99)]])
+        self.assertEqual(select_right_hand(result, prefer_largest=True), 0)
+        self.assertEqual(select_right_hand(result), 1)
+
     def test_right_hand_uses_label_and_confidence_not_screen_side(self):
         result = NS(hand_landmarks=[hand(0.1), hand(0.9), hand(0.5)],
                     handedness=[[NS(category_name="Left", score=0.99)],

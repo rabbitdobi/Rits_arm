@@ -72,3 +72,81 @@ def draw_tracking(image, landmarks, frame, fps):
         label = f"{name:6s}  x {finger['x']:.3f}  y {finger['y']:.3f}  speed {speed} /s"
         cv2.putText(image, label, (12, 47 + row * 23), cv2.FONT_HERSHEY_SIMPLEX,
                     0.48, COLORS[name], 1, cv2.LINE_AA)
+
+
+def draw_control(image, control):
+    """Five normalized flexion bars and an advisory distance, never servo targets."""
+    height, width = image.shape[:2]
+    panel_w, panel_h = 470, 310
+    scale = min(1., width / panel_w, height / panel_h)
+    rendered_w, rendered_h = max(1, int(panel_w * scale)), max(1, int(panel_h * scale))
+    target = image[height - rendered_h:, width - rendered_w:]
+    image = cv2.resize(target, (panel_w, panel_h))
+    cv2.addWeighted(image, .15, np.zeros_like(image), .85, 0, dst=image)
+    x = y = 0
+
+    def label(text, row, color=(220, 240, 230)):
+        cv2.putText(image, text, (x + 12, y + row), cv2.FONT_HERSHEY_SIMPLEX,
+                    .48, color, 1, cv2.LINE_AA)
+
+    label("CONTROL PREVIEW / NO HARDWARE", 23)
+    label(f"C: calibrate at {control['reference_cm']:g} cm | R: reset", 46)
+    state = control["status"].replace("_", " ").upper()
+    label(f"{state}  ({control['calibration_samples']} samples)"
+          if control["status"] in ("calibrating", "hold_still") else state, 69)
+    distance = control["distance_cm"]
+    label("Palm Z estimate: --" if distance is None else
+          f"Palm Z estimate: {distance:.1f} cm | delta {control['delta_cm']:+.1f}", 94,
+          (100, 230, 255))
+    label("Finger flexion: straight 0 -> bent 1", 119)
+    for i, name in enumerate(COLORS):
+        value = control["flexion"].get(name)
+        row = 147 + i * 27
+        label(f"{name:6s}  {'--' if value is None else f'{value:.2f}'}", row, COLORS[name])
+        left, right = x + min(170, panel_w // 2), x + panel_w - 16
+        cv2.rectangle(image, (left, y + row - 11), (right, y + row), (60, 65, 60), -1)
+        if value is not None:
+            cv2.rectangle(image, (left, y + row - 11),
+                          (left + int(value * (right - left)), y + row), COLORS[name], -1)
+    label("Estimated only; thumb flexion excludes opposition", 298, (150, 170, 170))
+    target[:] = cv2.resize(image, (rendered_w, rendered_h), interpolation=cv2.INTER_AREA)
+
+
+def draw_metric_depth(image, depth, flexion):
+    """Display metric camera coordinates separately from mirrored screen positions."""
+    height, width = image.shape[:2]
+    points = depth["points"]
+    for point in points.values():
+        if point["pixel_x"] is not None:
+            cv2.circle(image, (width - 1 - point["pixel_x"], point["pixel_y"]), 3,
+                       (80, 255, 80) if point["valid"] else (80, 80, 255), -1)
+    panel_h = min(height, 245)
+    panel = image[:panel_h, :]
+    cv2.addWeighted(panel, .15, np.zeros_like(panel), .85, 0, dst=panel)
+
+    def label(text, y, color=(230, 240, 230)):
+        cv2.putText(image, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, .46, color, 1, cv2.LINE_AA)
+
+    label("D455 + MEDIAPIPE | XYZ meters | NO MOTOR OUTPUT", 22)
+    palm = points.get("Palm", {})
+    z = palm.get("Z_m")
+    tips = [points.get(name + "_Tip", {}) for name in COLORS]
+    valid_tips = sum(bool(point.get("valid")) for point in tips)
+    palm_label = "Palm Z: -- (no valid depth)" if z is None else f"Palm Z: {z * 100:.1f} cm"
+    label(f"{palm_label} | Tips valid: {valid_tips}/5", 47, (100, 240, 255))
+    label("Finger     X(m)     Y(m)     Z(m)    Curl(0-1)", 72)
+    for row, name in enumerate(COLORS):
+        point = points.get(name + "_Tip", {})
+        values = ["   --" if point.get(axis) is None else f"{point[axis]:+7.3f}" for axis in ("X_m", "Y_m", "Z_m")]
+        curl = flexion.get(name)
+        label(f"{name:6s}  {'  '.join(values)}   {'--' if curl is None else f'{curl:.2f}'}",
+              96 + row * 21, COLORS[name])
+    label("XYZ: unmirrored camera; missing depth stays blank", 199, (170, 180, 180))
+    if not points:
+        hint = "Show your RIGHT hand; keep other hands out of view"
+    else:
+        holes = sum(point.get("reason") == "center_hole" for point in tips)
+        sparse = sum(point.get("reason") == "sparse_depth" for point in tips)
+        edges = sum(point.get("reason") == "depth_edge" for point in tips)
+        hint = f"Missing tips: raw holes {holes}, sparse {sparse}, edges {edges}"
+    label(hint, 224, (130, 210, 255))

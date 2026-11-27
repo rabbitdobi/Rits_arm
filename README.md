@@ -60,6 +60,31 @@ selection, CSV/JSON output, and running again later.
 The hand landmark model is included. You need Git, Python 3.10 or newer, and a
 camera. This version displays fingertip positions, speeds and glowing trails;
 it does not require ROS or a robotic hand.
+Add `--record` when starting the tracker to save an MP4 demo with the tracking
+overlay. See the [video recording guide](mediapipe/VincentMediapipe/README.md#record-a-video-demo).
+
+For the camera-only prototype, run with `--control-preview --reference-cm 40`.
+Place your palm at the measured reference distance, press C to calibrate, then
+preview estimated palm distance and finger flexion without Arduino. On macOS,
+`开始距离校准.command` starts this mode with MP4 recording. See the
+[calibration guide and limits](mediapipe/VincentMediapipe/README.md#camera-only-distance-and-finger-control-preview).
+
+## RealSense D455 depth experiment
+
+The direct USB route uses a D455 and the local Python environment, without an
+iPhone or full Xcode. Run `开始D455测试.command` to inspect color and aligned
+depth and save a numeric depth diagnostic. `开始D455手部追踪.command` integrates
+MediaPipe and metric XYZ export; `D455诊断采样.command` also saves original-frame
+evidence for investigating depth holes. See the [D455 guide](mediapipe/VincentMediapipe/docs/realsense-macos.md)
+for macOS USB permissions, outputs and measurement limits. No motor output exists.
+
+## iPhone depth experiment
+
+The native [Depth Probe app](ios/DepthProbe/README.md) is a separate experiment to
+compare front TrueDepth and rear LiDAR on the same iPhone. It displays synchronized
+video and center-region depth and exports 10-second CSV tests. Full Xcode and a
+physical depth-capable iPhone are required; this is not yet connected to MediaPipe,
+ROS or the robotic hand. See its README for installation and measurement limits.
 
 ## Project Goal
 
@@ -100,3 +125,17 @@ The team will agree on the tracking output, ROS input, finger order, value range
 VincentMediapipe can track the right hand and export fingertip positions and
 speeds. See the [MediaPipe directory](mediapipe/README.md) for the separate
 versions and shared model. ROS and hardware integration are still in development.
+
+## 统一控制预览（离线可运行）
+
+- 没有摄像头：双击 `查看离线控制演示.command`。生成并播放合成手部输入的演示视频，保存三路目标日志；不连接摄像头或电机。
+- D455 接回后：双击 `开始统一控制预览.command`。五指、手腕扭转和机械臂位移在一个窗口中预览，并录制 MP4。
+- 校准、输出单位、离线重放和限制见 [统一控制说明](mediapipe/VincentMediapipe/docs/unified-preview.md)。
+
+机械臂模型尚未实物校准；当前版本不发送 Arduino 或 ROS 控制命令。
+
+## 人体肩、肘、腕三维追踪
+
+双击 `开始手臂三维追踪.command`，用 MediaPipe Pose + D455 同帧深度检测人的整条手臂。
+它与原来的掌心控制模拟机械臂分开；不需要校准按键，需让肩膀到手腕完整进入画面。
+操作、缺失处理与局限见 [人体手臂追踪说明](mediapipe/VincentMediapipe/docs/human-arm-tracking.md)。
