@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 import time
 
-from motion import CSV_FIELDS, MotionTracker, select_right_hand, write_csv_frame
+from motion import CSV_FIELDS, MotionTracker, select_right_hand, select_pose, write_csv_frame
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -21,6 +21,8 @@ def parse_args(argv=None):
     source.add_argument("--camera", type=int, default=0, help="Camera index (default: 0)")
     source.add_argument("--video", type=Path, help="Read a constant-frame-rate video instead")
     parser.add_argument("--model", type=Path, default=SCRIPT_DIR.parent / "models" / "hand_landmarker.task")
+    parser.add_argument("--pose-model", type=Path, default=SCRIPT_DIR.parent / "models" / "pose_landmarker_lite.task")
+    parser.add_argument("--no-arm", action="store_true", help="Disable arm/pose tracking")
     parser.add_argument("--csv", type=Path, help="New CSV path (default: output/fingers-TIMESTAMP.csv)")
     parser.add_argument("--json", action="store_true", help="Emit one JSON object per frame on stdout")
     parser.add_argument("--headless", action="store_true", help="Disable the preview window")
@@ -57,6 +59,16 @@ def run(args):
             min_hand_detection_confidence=0.6, min_hand_presence_confidence=0.6,
             min_tracking_confidence=0.6)
         detector = stack.enter_context(mp.tasks.vision.HandLandmarker.create_from_options(options))
+
+        pose_detector = None
+        if not args.no_arm and args.pose_model.is_file():
+            pose_options = mp.tasks.vision.PoseLandmarkerOptions(
+                base_options=mp.tasks.BaseOptions(model_asset_path=str(args.pose_model)),
+                running_mode=mp.tasks.vision.RunningMode.VIDEO, num_poses=2,
+                min_pose_detection_confidence=0.5, min_pose_presence_confidence=0.5,
+                min_tracking_confidence=0.5)
+            pose_detector = stack.enter_context(mp.tasks.vision.PoseLandmarker.create_from_options(pose_options))
+
         if not args.headless:
             stack.callback(cv2.destroyAllWindows)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -80,9 +92,10 @@ def run(args):
                           else (now - start) * 1000)
             timestamp_ms = max(last_timestamp + 1, int(elapsed_ms))
             last_timestamp = timestamp_ms
-            result = detector.detect_for_video(
-                mp.Image(image_format=mp.ImageFormat.SRGB,
-                         data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB)), timestamp_ms)
+
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB,
+                                data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+            result = detector.detect_for_video(mp_image, timestamp_ms)
             index = select_right_hand(result)
             landmarks = None if index is None else result.hand_landmarks[index]
             world_landmarks = (None if index is None or not getattr(result, "hand_world_landmarks", None)
@@ -90,7 +103,14 @@ def run(args):
             score = None if index is None else max(
                 category.score for category in result.handedness[index]
                 if category.category_name == "Right")
-            frame = tracker.update(landmarks, timestamp_ms, score, world_landmarks=world_landmarks)
+
+            body_landmarks = None
+            if pose_detector is not None:
+                pose_result = pose_detector.detect_for_video(mp_image, timestamp_ms)
+                pose_index = select_pose(pose_result)
+                body_landmarks = None if pose_index is None else pose_result.pose_landmarks[pose_index]
+
+            frame = tracker.update(landmarks, timestamp_ms, score, world_landmarks=world_landmarks, body_landmarks=body_landmarks)
             write_csv_frame(writer, frame)
             if args.json:
                 print(json.dumps(frame, allow_nan=False, separators=(",", ":")), flush=True)

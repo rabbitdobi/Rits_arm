@@ -61,7 +61,7 @@ def draw_tracking(image, landmarks, frame, fps):
             point = (int(finger["x"] * (width - 1)), int(finger["y"] * (height - 1)))
             cv2.circle(image, point, 7, COLORS[name], -1, cv2.LINE_AA)
             cv2.circle(image, point, 3, (255, 255, 255), -1, cv2.LINE_AA)
-    panel_height, panel_width = min(height, 195), min(width, 390)
+    panel_height, panel_width = min(height, 245), min(width, 390)
     panel = image[:panel_height, :panel_width]
     cv2.addWeighted(panel, 0.25, np.zeros_like(panel), 0.75, 0, dst=panel)
     status = "RIGHT HAND" if frame["tracked"] else "RIGHT HAND LOST - show your right hand"
@@ -97,7 +97,7 @@ def draw_tracking(image, landmarks, frame, fps):
         cv2.putText(image, f"{angle:3.0f}deg", (bar_x + bar_w + 10, y_text),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.44, (230, 230, 230), 1, cv2.LINE_AA)
 
-    # 手首（Wrist）の中央振り分けゲージバー
+    # 手首のひねり（W-Roll）の中央振り分けゲージバー
     y_wrist = 47 + 5 * 24
     y_bar_w = y_wrist - 10
     wrist = frame.get("wrist_angle", 0.0)
@@ -105,7 +105,7 @@ def draw_tracking(image, landmarks, frame, fps):
     signed = frame.get("wrist_signed_angle", 0.0)
     wrist_color = (220, 220, 255)
 
-    cv2.putText(image, "Wrist ", (12, y_wrist), cv2.FONT_HERSHEY_SIMPLEX,
+    cv2.putText(image, "W-Roll", (12, y_wrist), cv2.FONT_HERSHEY_SIMPLEX,
                 0.46, wrist_color, 1, cv2.LINE_AA)
 
     # 手首ゲージ背景
@@ -126,3 +126,66 @@ def draw_tracking(image, landmarks, frame, fps):
     dir_str = "R" if wrist_dir == "RIGHT" else ("L" if wrist_dir == "LEFT" else "C")
     cv2.putText(image, f"{wrist:3.0f}deg [{dir_str}]", (bar_x + bar_w + 10, y_wrist),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.44, wrist_color, 1, cv2.LINE_AA)
+
+    # 手首の曲げ（W-Bend / Pitch）の中央振り分けゲージバー
+    y_pitch = 47 + 6 * 24
+    y_bar_p = y_pitch - 10
+    pitch = frame.get("wrist_pitch", 0.0)
+    pitch_dir = frame.get("wrist_pitch_direction", "CENTER")
+    pitch_color = (255, 230, 180)
+
+    cv2.putText(image, "W-Bend", (12, y_pitch), cv2.FONT_HERSHEY_SIMPLEX,
+                0.46, pitch_color, 1, cv2.LINE_AA)
+
+    # 手首曲げゲージ背景
+    cv2.rectangle(image, (bar_x, y_bar_p), (bar_x + bar_w, y_bar_p + bar_h), (50, 50, 50), -1)
+    center_p = bar_x + bar_w // 2
+    cv2.line(image, (center_p, y_bar_p - 2), (center_p, y_bar_p + bar_h + 2), (180, 180, 180), 1)
+
+    # 前後の曲げ（-60度〜+60度で中央振り分けフル）
+    p_ratio = max(-1.0, min(1.0, pitch / 60.0))
+    offset_p = int(p_ratio * (bar_w // 2))
+    if offset_p > 0:
+        # 掌屈（手首を前に曲げる）: エメラルドグリーン
+        cv2.rectangle(image, (center_p, y_bar_p), (center_p + offset_p, y_bar_p + bar_h), (120, 240, 160), -1)
+    elif offset_p < 0:
+        # 背屈（手首を後ろに反らす）: 紫・ピンク
+        cv2.rectangle(image, (center_p + offset_p, y_bar_p), (center_p, y_bar_p + bar_h), (240, 140, 200), -1)
+    cv2.rectangle(image, (bar_x, y_bar_p), (bar_x + bar_w, y_bar_p + bar_h), (90, 90, 90), 1)
+
+    # 手首曲げ数値と方向（FLX: 掌屈, EXT: 背屈, CTR: まっすぐ）
+    p_str = "FLX" if pitch_dir == "FLEX" else ("EXT" if pitch_dir == "EXTEND" else "CTR")
+    cv2.putText(image, f"{pitch:+3.0f}deg [{p_str}]", (bar_x + bar_w + 10, y_pitch),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.44, pitch_color, 1, cv2.LINE_AA)
+
+    # 肘（Elbow Flexion）の曲げゲージバー（0〜140deg）
+    y_elbow = 47 + 7 * 24
+    y_bar_e = y_elbow - 10
+    elbow = frame.get("elbow_angle", 0.0)
+    elbow_color = (255, 180, 100)
+
+    cv2.putText(image, "Elbow ", (12, y_elbow), cv2.FONT_HERSHEY_SIMPLEX,
+                0.46, elbow_color, 1, cv2.LINE_AA)
+
+    cv2.rectangle(image, (bar_x, y_bar_e), (bar_x + bar_w, y_bar_e + bar_h), (50, 50, 50), -1)
+    fill_e = int(max(0.0, min(1.0, elbow / 140.0)) * bar_w)
+    if fill_e > 0:
+        cv2.rectangle(image, (bar_x, y_bar_e), (bar_x + fill_e, y_bar_e + bar_h), elbow_color, -1)
+    cv2.rectangle(image, (bar_x, y_bar_e), (bar_x + bar_w, y_bar_e + bar_h), (90, 90, 90), 1)
+
+    cv2.putText(image, f"{elbow:3.0f}deg", (bar_x + bar_w + 10, y_elbow),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.44, (230, 230, 230), 1, cv2.LINE_AA)
+
+    # 腕の骨格（肩〜肘〜手首）の描画
+    body = frame.get("body_landmarks")
+    if body is not None and len(body) >= 17:
+        sh, el, wr = body[12], body[14], body[16]
+        if getattr(sh, "visibility", 0) >= 0.4 and getattr(el, "visibility", 0) >= 0.4:
+            p_sh = (int((1.0 - sh.x) * (width - 1)), int(sh.y * (height - 1)))
+            p_el = (int((1.0 - el.x) * (width - 1)), int(el.y * (height - 1)))
+            cv2.line(image, p_sh, p_el, (255, 200, 100), 3, cv2.LINE_AA)
+            cv2.circle(image, p_sh, 6, (255, 200, 100), -1, cv2.LINE_AA)
+            cv2.circle(image, p_el, 6, (255, 200, 100), -1, cv2.LINE_AA)
+            if getattr(wr, "visibility", 0) >= 0.4:
+                p_wr = (int((1.0 - wr.x) * (width - 1)), int(wr.y * (height - 1)))
+                cv2.line(image, p_el, p_wr, (255, 200, 100), 3, cv2.LINE_AA)

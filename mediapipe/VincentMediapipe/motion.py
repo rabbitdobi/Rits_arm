@@ -120,6 +120,93 @@ def calculate_wrist_roll(landmarks):
     return round(deg_360, 1), round(signed_deg, 1)
 
 
+def calculate_wrist_pitch(landmarks, elbow=None):
+    """
+    Calculate wrist flexion/pitch angle in degrees (-90 to +90).
+    Positive = flexion (掌屈 / 前へ曲げる)
+    Negative = extension (背屈 / 後ろへ反らす)
+    0 = neutral (まっすぐ)
+
+    Combines 3D joint projection with 2D foreshortening compensation so that
+    when roll ~ 180deg (back of hand facing camera), depth-compressed tilts
+    reach full range (~60deg) consistent with roll ~ 90deg (side profile).
+    """
+    if landmarks is None or len(landmarks) < 21:
+        return 0.0
+
+    p0, p5, p9, p17 = landmarks[0], landmarks[5], landmarks[9], landmarks[17]
+
+    # Scale depth (Z) by 3.5x to compensate for MediaPipe single-camera RGB depth compression.
+    # Without this, depth tilts (roll ~180deg) are compressed ~3.5x compared to lateral tilts (roll ~90deg).
+    Z_SCALE = 3.5
+
+    # Hand longitudinal vector: Wrist(0) -> Middle MCP(9)
+    lx = p9.x - p0.x
+    ly = p9.y - p0.y
+    lz = (getattr(p9, "z", 0.0) - getattr(p0, "z", 0.0)) * Z_SCALE
+    l_norm = math.sqrt(lx**2 + ly**2 + lz**2)
+    if l_norm == 0:
+        return 0.0
+    lx_u, ly_u, lz_u = lx / l_norm, ly / l_norm, lz / l_norm
+
+    # Hand transverse vector: Pinky MCP(17) -> Index MCP(5)
+    tx = p5.x - p17.x
+    ty = p5.y - p17.y
+    tz = (getattr(p5, "z", 0.0) - getattr(p17, "z", 0.0)) * Z_SCALE
+    t_norm = math.sqrt(tx**2 + ty**2 + tz**2)
+    if t_norm > 0:
+        tx_u, ty_u, tz_u = tx / t_norm, ty / t_norm, tz / t_norm
+    else:
+        tx_u, ty_u, tz_u = -1.0, 0.0, 0.0
+
+    # Palm normal vector = transverse x longitudinal (pointing out of palm)
+    nx = ty_u * lz_u - tz_u * ly_u
+    ny = tz_u * lx_u - tx_u * lz_u
+    nz = tx_u * ly_u - ty_u * lx_u
+    n_norm = math.sqrt(nx**2 + ny**2 + nz**2)
+    if n_norm > 0:
+        nx, ny, nz = nx / n_norm, ny / n_norm, nz / n_norm
+    else:
+        nx, ny, nz = 0.0, 0.0, 1.0
+
+    # Forearm direction vector (elbow -> wrist):
+    if elbow is not None:
+        fx = p0.x - elbow.x
+        fy = p0.y - elbow.y
+        fz = (getattr(p0, "z", 0.0) - getattr(elbow, "z", 0.0)) * Z_SCALE
+        f_norm = math.sqrt(fx**2 + fy**2 + fz**2)
+        if f_norm > 0:
+            fx, fy, fz = fx / f_norm, fy / f_norm, fz / f_norm
+        else:
+            fx, fy, fz = 0.0, -1.0, 0.0
+    else:
+        # Provisional mode: arm enters from bottom of camera frame (pointing upwards in image -Y)
+        fx, fy, fz = 0.0, -1.0, 0.0
+
+    dot_l = fx * lx_u + fy * ly_u + fz * lz_u
+    dot_n = fx * nx + fy * ny + fz * nz
+
+    raw_pitch = math.degrees(math.atan2(dot_n, dot_l))
+
+    # 2D Foreshortening Compensation:
+    # When hand is facing camera (roll ~180deg or ~0deg), projected distance between
+    # wrist(0) and middle MCP(9) visibly foreshortens.
+    d2d = math.hypot(p9.x - p0.x, p9.y - p0.y)
+    knuckle_w = math.hypot(p5.x - p17.x, p5.y - p17.y)
+    expected_len = max(l_norm, knuckle_w * 1.40)
+    if expected_len > 0:
+        ratio = max(0.0, min(1.0, d2d / expected_len))
+        foreshorten_deg = math.degrees(math.acos(ratio))
+    else:
+        foreshorten_deg = 0.0
+
+    # Combine: direction/sign from 3D raw_pitch, magnitude assisted by 2D contraction
+    sign = 1.0 if raw_pitch >= 0 else -1.0
+    mag = max(abs(raw_pitch), foreshorten_deg)
+    pitch = sign * min(90.0, mag)
+    return round(pitch, 1)
+
+
 def select_right_hand(result, min_score=0.6):
     """Select the most confident subject-right hand in an unmirrored input."""
     candidates = [(category.score, index)
@@ -130,6 +217,42 @@ def select_right_hand(result, min_score=0.6):
     return max(candidates)[1] if candidates else None
 
 
+def select_pose(result):
+    """Select the most confident subject-right pose candidate."""
+    if not getattr(result, "pose_landmarks", None):
+        return None
+    candidates = []
+    for i, pts in enumerate(result.pose_landmarks):
+        if len(pts) != 33:
+            continue
+        usable = [pts[j] for j in (11, 12, 13, 14, 15, 16, 23, 24)
+                  if getattr(pts[j], "visibility", 0.0) >= 0.4]
+        if len(usable) < 2:
+            continue
+        score = sum(getattr(p, "visibility", 0.0) for p in usable)
+        candidates.append((score, i))
+    return max(candidates)[1] if candidates else None
+
+
+def calculate_elbow_angle(shoulder, elbow, wrist):
+    """
+    Calculate 3D elbow flexion angle in degrees.
+    0 deg = fully straight arm, ~140-150 deg = fully bent elbow.
+    """
+    if shoulder is None or elbow is None or wrist is None:
+        return 0.0
+    es = (shoulder.x - elbow.x, shoulder.y - elbow.y, getattr(shoulder, "z", 0.0) - getattr(elbow, "z", 0.0))
+    ew = (wrist.x - elbow.x, wrist.y - elbow.y, getattr(wrist, "z", 0.0) - getattr(elbow, "z", 0.0))
+    d_es = math.sqrt(es[0]**2 + es[1]**2 + es[2]**2)
+    d_ew = math.sqrt(ew[0]**2 + ew[1]**2 + ew[2]**2)
+    if d_es == 0 or d_ew == 0:
+        return 0.0
+    dot = es[0]*ew[0] + es[1]*ew[1] + es[2]*ew[2]
+    cos_angle = max(-1.0, min(1.0, dot / (d_es * d_ew)))
+    flexion = 180.0 - math.degrees(math.acos(cos_angle))
+    return round(max(0.0, min(150.0, flexion)), 1)
+
+
 class MotionTracker:
     def __init__(self, smoothing_ms=60, max_gap_ms=250):
         self.smoothing_ms = smoothing_ms
@@ -138,7 +261,7 @@ class MotionTracker:
         self.previous_angles = None
         self.last_timestamp = None
 
-    def update(self, landmarks, timestamp_ms, score=None, world_landmarks=None):
+    def update(self, landmarks, timestamp_ms, score=None, world_landmarks=None, elbow_point=None, body_landmarks=None):
         if self.last_timestamp is not None and timestamp_ms <= self.last_timestamp:
             raise ValueError("Frame timestamps must strictly increase")
         dt_ms = None if self.last_timestamp is None else timestamp_ms - self.last_timestamp
@@ -216,15 +339,62 @@ class MotionTracker:
         else:
             wrist_dir = "CENTER"
 
+        # Calculate elbow flexion from pose landmarks (Right shoulder 12, elbow 14, wrist 16)
+        if body_landmarks is not None and len(body_landmarks) >= 17:
+            sh = body_landmarks[12]
+            el = body_landmarks[14]
+            wr = body_landmarks[16]
+            if elbow_point is None and getattr(el, "visibility", 1.0) >= 0.4:
+                elbow_point = el
+            raw_elbow = calculate_elbow_angle(sh, el, wr)
+        else:
+            raw_elbow = 0.0
+
+        if self.previous_angles is not None and "Elbow" in self.previous_angles:
+            old_e = self.previous_angles["Elbow"]
+            filtered_e = old_e + angle_alpha * (raw_elbow - old_e)
+            if abs(filtered_e - old_e) < 1.0 and abs(raw_elbow - old_e) < 2.5:
+                smoothed_elbow = old_e
+            else:
+                smoothed_elbow = filtered_e
+        else:
+            smoothed_elbow = raw_elbow
+        smoothed_angles["Elbow"] = round(smoothed_elbow, 1)
+
+        # Smooth wrist pitch (flexion / extension)
+        raw_wrist_pitch = calculate_wrist_pitch(landmarks, elbow=elbow_point)
+        if self.previous_angles is not None and "Wrist_pitch" in self.previous_angles:
+            old_p = self.previous_angles["Wrist_pitch"]
+            filtered_p = old_p + angle_alpha * (raw_wrist_pitch - old_p)
+            if abs(filtered_p - old_p) < 1.0 and abs(raw_wrist_pitch - old_p) < 2.5:
+                smoothed_pitch = old_p
+            else:
+                smoothed_pitch = filtered_p
+        else:
+            smoothed_pitch = raw_wrist_pitch
+        smoothed_angles["Wrist_pitch"] = round(smoothed_pitch, 1)
+
+        # Flexion / Extension direction detection
+        if smoothed_pitch > 10.0:
+            pitch_dir = "FLEX"
+        elif smoothed_pitch < -10.0:
+            pitch_dir = "EXTEND"
+        else:
+            pitch_dir = "CENTER"
+
         self.previous_angles = smoothed_angles
 
-        # 6 values for robot control: 5 fingers + wrist rotation
-        finger_angles = [smoothed_angles.get(f, 0.0) for f in ("Thumb", "Index", "Middle", "Ring", "Pinky", "Wrist")]
+        # 8 values for robot control: 5 fingers + wrist roll + wrist pitch + elbow
+        finger_angles = [smoothed_angles.get(f, 0.0) for f in ("Thumb", "Index", "Middle", "Ring", "Pinky", "Wrist", "Wrist_pitch", "Elbow")]
         frame["angles"] = smoothed_angles
         frame["finger_angles"] = finger_angles
         frame["wrist_angle"] = smoothed_angles["Wrist"]
         frame["wrist_signed_angle"] = smoothed_angles["Wrist_signed"]
         frame["wrist_direction"] = wrist_dir
+        frame["wrist_pitch"] = smoothed_angles["Wrist_pitch"]
+        frame["wrist_pitch_direction"] = pitch_dir
+        frame["elbow_angle"] = smoothed_angles["Elbow"]
+        frame["body_landmarks"] = body_landmarks
 
         for name, index in FINGERTIPS.items():
             x, y = 1.0 - landmarks[index].x, landmarks[index].y
